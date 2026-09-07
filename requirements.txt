@@ -1,0 +1,41 @@
+# ============================================================
+# Stock AI Research Terminal — Python dependencies
+# Installed all at once, but grouped by the phase that needs them
+# so you know what's actually in use right now (Phase 1).
+# ============================================================
+
+# --- Phase 1: core app, data, indicators, UI ---
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic==2.9.2
+pydantic-settings==2.5.2
+python-dotenv==1.0.1
+yfinance==0.2.44
+pandas==2.2.3
+numpy==1.26.4
+httpx==0.27.2
+requests==2.32.3
+
+# --- Phase 2: fundamentals / news (now in active use) ---
+feedparser==6.0.11
+beautifulsoup4==4.12.3
+
+# --- Phase 3: machine learning (now in active use) ---
+scikit-learn==1.5.2
+xgboost==2.1.1
+# torch is optional — the LSTM model gracefully degrades to "unavailable"
+# if this isn't installed. Try `pip install torch`; if it fails with
+# "no matching distribution," your Python version may be too new for a
+# pre-built wheel yet — everything else in the app still works.
+torch==2.4.1
+
+# --- Now in active use: powers automatic prediction-accuracy evaluation ---
+# (optional — the app works fine without it, just falls back to manual
+# "Evaluate matured predictions" clicking instead of automatic checks)
+apscheduler==3.10.4
+
+# --- Phase 5: backtesting / stats ---
+scipy==1.14.1
+
+# --- Testing ---
+pytest==8.3.3

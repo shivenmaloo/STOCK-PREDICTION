@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Stock AI Research Terminal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<script src="/static/js/plotly.min.js"></script>
+<link rel="stylesheet" href="/static/css/style.css" />
+<script>
+  // Runs synchronously before first paint, so the correct theme
+  // applies immediately — no flash of the wrong theme on load.
+  (function() {
+    try {
+      var saved = localStorage.getItem("theme");
+      document.documentElement.dataset.theme = saved === "light" ? "light" : "dark";
+    } catch (e) {
+      document.documentElement.dataset.theme = "dark";
+    }
+  })();
+</script>
+</head>
+<body>
+
+<div class="app-shell">
+
+  <!-- Signature element: live ticker tape -->
+  <div class="ticker-tape" id="tickerTape">
+    <div class="ticker-tape__track" id="tickerTapeTrack">
+      <span class="ticker-tape__item ticker-tape__item--placeholder">Loading market data…</span>
+    </div>
+  </div>
+
+  <div class="app-body">
+    <!-- ================= FULL-SCREEN NAV OVERLAY ================= -->
+    <div class="site-menu" id="siteMenu">
+      <div class="site-menu__header">
+        <div class="sidebar__brand">
+          <span class="sidebar__brand-mark">◈</span>
+          <div class="sidebar__brand-text">
+            <span class="sidebar__brand-name">STOCK&nbsp;AI</span>
+            <span class="sidebar__brand-sub">Research Terminal</span>
+          </div>
+        </div>
+        <button class="site-menu__close" id="siteMenuClose">✕</button>
+      </div>
+      <div class="site-menu__body" id="siteMenuNav">
+        <div class="site-menu__column">
+          <div class="site-menu__group-label">Research</div>
+          <button class="site-menu__link active" data-view="dashboard">Dashboard</button>
+          <button class="site-menu__link" data-view="watchlist">Watchlist</button>
+          <button class="site-menu__link" data-view="analyzer">Stock Analyzer</button>
+          <button class="site-menu__link" data-view="scanner">Scanner</button>
+          <button class="site-menu__link" data-view="market">Market</button>
+          <button class="site-menu__link" data-view="news">News</button>
+        </div>
+        <div class="site-menu__column">
+          <div class="site-menu__group-label">Portfolio</div>
+          <button class="site-menu__link" data-view="portfolio">Portfolio</button>
+          <button class="site-menu__link" data-view="alerts">Alerts <span class="nav-badge" id="alertBadge" style="display:none;"></span></button>
+        </div>
+        <div class="site-menu__column">
+          <div class="site-menu__group-label">AI &amp; Models</div>
+          <button class="site-menu__link" data-view="predictions">Predictions</button>
+          <button class="site-menu__link" data-view="backtesting">Backtesting</button>
+          <button class="site-menu__link" data-view="tcnresearch">TCN Research</button>
+          <button class="site-menu__link" data-view="volatility">Volatility Surface</button>
+          <button class="site-menu__link" data-view="models">Models</button>
+          <button class="site-menu__link" data-view="chat">AI Assistant</button>
+        </div>
+        <div class="site-menu__column">
+          <div class="site-menu__group-label">System</div>
+          <button class="site-menu__link" data-view="settings">Settings</button>
+        </div>
+      </div>
+      <div class="site-menu__footer">
+        <span class="build-note">Research tool. Not financial advice.</span>
+      </div>
+    </div>
+
+    <!-- ================= COMMAND PALETTE ================= -->
+    <div class="cmdk-overlay" id="cmdkOverlay">
+      <div class="cmdk-panel">
+        <div class="cmdk-input-row">
+          <span class="cmdk-input-icon">⌕</span>
+          <input type="text" id="cmdkInput" class="cmdk-input" placeholder="Jump to a page, or search any ticker…" autocomplete="off" />
+          <kbd class="cmdk-esc">esc</kbd>
+        </div>
+        <div class="cmdk-results" id="cmdkResults"></div>
+      </div>
+    </div>
+
+    <main class="content content--full">
+      <div class="global-topbar">
+        <button class="menu-trigger" id="menuTrigger">
+          <span class="menu-trigger__icon">☰</span>
+          <span>Menu</span>
+        </button>
+        <div class="global-search-wrapper">
+          <span class="global-search-icon">⌕</span>
+          <input type="text" id="globalSearchInput" class="global-search-input" placeholder="Search any ticker — jumps straight to it, from anywhere" autocomplete="off" />
+          <div id="globalSearchResults" class="global-search-results"></div>
+        </div>
+        <div class="global-topbar__actions">
+          <button class="cmdk-trigger cmdk-trigger--compact" id="cmdkTrigger">
+            <kbd>⌘</kbd><kbd>K</kbd>
+          </button>
+          <button class="icon-btn" id="themeToggleBtn" title="Toggle light/dark theme">
+            <span id="themeToggleIcon">🌙</span>
+          </button>
+          <button class="icon-btn" id="globalAlertsBtn" data-view="alerts" title="Alerts">
+            🔔<span class="nav-badge" id="topbarAlertBadge" style="display:none;"></span>
+          </button>
+        </div>
+      </div>
+
+      <div class="view-container">
+
+      <!-- ================= DASHBOARD ================= -->
+      <section class="view active" id="view-dashboard">
+        <header class="view-header">
+          <h1>Dashboard</h1>
+          <p class="view-subtitle">What's happening across the market and your watchlist right now. Click any card to jump straight into it.</p>
+        </header>
+
+        <div class="dashboard-section">
+          <p class="dashboard-section__eyebrow">Market Overview</p>
+          <div class="panel-grid" id="benchmarkGrid">
+            <div class="skeleton-card">Loading benchmarks…</div>
+          </div>
+        </div>
+
+        <div class="dashboard-section">
+          <p class="dashboard-section__eyebrow">For You</p>
+          <div class="dashboard-grid">
+            <div class="panel dashboard-grid__wide">
+              <div class="panel__header">
+                <h2>Suggested from your tracked stocks</h2>
+                <button class="btn btn--ghost" id="refreshSuggestionsBtn">Refresh</button>
+              </div>
+              <p class="field-hint" style="margin-top:-4px; margin-bottom:14px;">Ranked by real signal strength, confidence, and validated accuracy — pulled from predictions already run on your watchlist and portfolio, never a new parallel system.</p>
+              <div id="suggestionsResults"><p class="empty-state">Loading…</p></div>
+            </div>
+
+            <div class="panel dashboard-grid__narrow">
+              <div class="panel__header">
+                <h2>Watchlist</h2>
+                <button class="btn btn--ghost" data-nav="watchlist">Manage →</button>
+              </div>
+              <form id="dashboardQuickAddForm" class="quick-add-form">
+                <input type="text" id="dashboardQuickAddInput" placeholder="Add a ticker, e.g. AAPL" autocomplete="off" />
+                <button type="submit" class="btn btn--primary">Add</button>
+              </form>
+              <div id="dashboardWatchlist" class="table-wrap">
+                <p class="empty-state">Your watchlist is empty — add your first ticker above.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="dashboard-section">
+          <p class="dashboard-section__eyebrow">Discover</p>
+          <div class="panel" id="discoveryPanel">
+          <div class="panel__header">
+            <h2>Discover new stocks</h2>
+            <button class="btn btn--ghost" id="triggerDiscoverySweepBtn">Sweep now</button>
+          </div>
+          <p class="field-hint" style="margin-top:-4px; margin-bottom:10px;">
+            Ranked over ~120 well-known, liquid US stocks — not just what's on your watchlist. Coverage builds up gradually
+            in the background (a background job checks a few new tickers every few hours) rather than all at once.
+          </p>
+          <div class="tabs" id="discoveryModeTabs" style="margin-bottom:10px;">
+            <button type="button" class="tab-btn active" data-mode="ranked">Top ranked</button>
+            <button type="button" class="tab-btn" data-mode="diversified">Diversified</button>
+          </div>
+          <div id="discoveryDiversifiedHint" class="field-hint" style="display:none; margin-bottom:10px;">
+            Trades off raw signal strength against actual historical price correlation — a strong-but-redundant pick can lose
+            out to a slightly weaker one that isn't just repeating the same underlying bet. Real risk-management practice
+            favors low correlation across many smaller bets over concentrating in one "best" idea.
+          </div>
+          <div id="discoveryCoverageBar" style="margin-bottom:14px;"></div>
+          <div id="discoveryResults"><p class="empty-state">Loading…</p></div>
+          </div>
+        </div>
+
+        <div class="panel panel--muted" style="margin-top:28px;">
+          <p class="disclaimer">
+            <strong>Reminder:</strong> everything in this dashboard is descriptive, historical, and
+            probabilistic. Nothing here is a guarantee of future performance.
+          </p>
+        </div>
+      </section>
+
+      <!-- ================= WATCHLIST ================= -->
+      <section class="view" id="view-watchlist">
+        <header class="view-header">
+          <h1>Watchlist</h1>
+          <p class="view-subtitle">Track the tickers you care about. Add any US-listed stock, ETF, or index.</p>
+        </header>
+
+        <div class="panel">
+          <form id="watchlistAddForm" class="inline-form">
+            <input type="text" id="watchlistTickerInput" placeholder="Add a ticker, e.g. NVDA" autocomplete="off" />
+            <button type="submit" class="btn btn--primary">Add</button>
+          </form>
+          <div id="watchlistSearchResults" class="search-results"></div>
+        </div>
+
+        <div class="panel">
+          <div id="watchlistTableWrap" class="table-wrap">
+            <p class="empty-state">No tickers yet. Add one above.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= STOCK ANALYZER ================= -->
+      <section class="view" id="view-analyzer">
+        <header class="view-header">
+          <h1>Stock Analyzer</h1>
+          <p class="view-subtitle">Deep dive into a single ticker: price history, technicals, and interpretation.</p>
+        </header>
+
+        <div class="panel">
+          <form id="analyzerSearchForm" class="inline-form">
+            <input type="text" id="analyzerTickerInput" placeholder="Enter a ticker, e.g. AAPL" autocomplete="off" />
+            <button type="submit" class="btn btn--primary">Analyze</button>
+            <div class="period-toggle" id="periodToggle">
+              <button data-period="1mo">1M</button>
+              <button data-period="3mo">3M</button>
+              <button data-period="6mo" class="active">6M</button>
+              <button data-period="1y">1Y</button>
+              <button data-period="3y">3Y</button>
+              <button data-period="5y">5Y</button>
+              <button data-period="max">MAX</button>
+            </div>
+          </form>
+        </div>
+
+        <div id="analyzerEmptyState" class="panel panel--muted">
+          <p class="empty-state">Search a ticker above to pull up its chart, indicators, and interpretation.</p>
+        </div>
+
+        <div id="analyzerResults" class="analyzer-results" style="display:none;">
+
+          <div class="panel">
+            <div class="stock-header" id="stockHeader"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel__header">
+              <h2>Price chart</h2>
+              <span class="data-quality-badge" id="dataQualityBadge"></span>
+            </div>
+            <div id="candlestickChart" class="chart"></div>
+            <div id="providerComparisonPanel"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel__header">
+              <h2>Live chart</h2>
+              <span class="data-quality-badge data-quality-badge--good">TradingView · live</span>
+            </div>
+            <p class="field-hint" style="margin-top:-6px;">Streamed directly from TradingView in your browser — genuinely live, unlike the delayed/cached data above. If it doesn't load, an ad-blocker or privacy extension may be blocking third-party scripts.</p>
+            <div id="tradingViewChart" class="tradingview-widget-container"></div>
+          </div>
+
+          <div class="panel-grid panel-grid--two">
+            <div class="panel">
+              <div class="panel__header"><h2>Technical read</h2></div>
+              <p class="interpretation-text" id="interpretationText"></p>
+              <div class="structure-tags" id="structureTags"></div>
+            </div>
+            <div class="panel">
+              <div class="panel__header"><h2>Key indicators</h2></div>
+              <div class="indicator-grid" id="indicatorGrid"></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel__header">
+              <h2>Fundamentals</h2>
+              <span class="data-quality-badge" id="fundamentalsQualityBadge"></span>
+            </div>
+            <div id="fundamentalsContent"><p class="empty-state">Loading fundamentals…</p></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel__header">
+              <h2>SEC filings &amp; financial trend</h2>
+              <span class="data-quality-badge" id="secQualityBadge"></span>
+            </div>
+            <p class="field-hint" style="margin-top:-4px;">Pulled directly from SEC EDGAR — official filings, not an aggregator. Every figure links back to its source filing.</p>
+            <div id="secFinancialsContent"><p class="empty-state">Loading SEC financial data…</p></div>
+            <div id="secFilingsContent" style="margin-top:14px;"><p class="empty-state">Loading recent filings…</p></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel__header">
+              <h2>News</h2>
+              <span class="data-quality-badge" id="newsQualityBadge"></span>
+            </div>
+            <div id="newsContent"><p class="empty-state">Loading news…</p></div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ================= MARKET ================= -->
+      <section class="view" id="view-market">
+        <header class="view-header">
+          <h1>Market</h1>
+          <p class="view-subtitle">Overall market regime and sector rotation.</p>
+        </header>
+
+        <div class="panel">
+          <div class="panel__header"><h2>Market regime</h2></div>
+          <div id="regimeContent"><p class="empty-state">Loading…</p></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel__header"><h2>Sector rankings</h2></div>
+          <div id="sectorsContent"><p class="empty-state">Loading…</p></div>
+        </div>
+      </section>
+
+      <!-- ================= NEWS ================= -->
+      <section class="view" id="view-news">
+        <header class="view-header">
+          <h1>News</h1>
+          <p class="view-subtitle">Recent headlines for your watchlist, with context-aware sentiment and impact.</p>
+        </header>
+
+        <div class="panel">
+          <form id="newsSearchForm" class="inline-form">
+            <input type="text" id="newsTickerInput" placeholder="Ticker, e.g. AAPL (defaults to your watchlist)" autocomplete="off" />
+            <button type="submit" class="btn btn--primary">Load news</button>
+          </form>
+        </div>
+
+        <div class="panel">
+          <div class="panel__header"><h2>How accurate is this scoring system, really?</h2></div>
+          <p class="field-hint" style="margin-top:-4px; margin-bottom:12px;">
+            Every news read a real prediction uses gets logged the moment it happens, then checked against what the price
+            actually did once that same horizon elapses — a live, growing record, not a retroactive claim (we don't have a
+            historical news archive to validate against, so we build this forward from today instead).
+          </p>
+          <div id="newsAccuracyResults"><p class="empty-state">Loading…</p></div>
+        </div>
+
+        <div id="newsPageContent"><p class="empty-state">Loading watchlist news…</p></div>
+      </section>
+
+      <!-- ================= SCANNER ================= -->
+      <section class="view" id="view-scanner">
+        <header class="view-header">
+          <h1>Scanner</h1>
+          <p class="view-subtitle">Scans ~150 well-known, liquid US stocks and surfaces ones worth a closer look — pick a preset, or build your own filter.</p>
+        </header>
+
+        <div class="panel">
+          <div class="panel__header"><h2>Quick scans</h2></div>
+          <div class="preset-grid" id="scannerPresets">
+            <button class="preset-card" data-preset="bullish_momentum">
+              <span class="preset-card__title">Bullish Momentum</span>
+              <span class="preset-card__desc">Trading above both the 50 and 200-day average, up 5%+ this month, with healthy (not overheated) RSI.</span>
+            </button>
+            <button class="preset-card" data-preset="oversold">
+              <span class="preset-card__title">Oversold, Elevated Volume</span>
+              <span class="preset-card__desc">RSI under 35 (often a pullback/bounce zone) with above-average trading volume behind the move.</span>
+            </button>
+            <button class="preset-card" data-preset="high_volume">
+              <span class="preset-card__title">Unusual Volume</span>
+              <span class="preset-card__desc">Trading at more than double its normal volume — something's drawing extra attention today.</span>
+            </button>
+            <button class="preset-card" data-preset="new_highs">
+              <span class="preset-card__title">Strong 3-Month Trend</span>
+              <span class="preset-card__desc">Up 15%+ over 3 months and holding above its 50-day average.</span>
+            </button>
+            <button class="preset-card" data-preset="quality_uptrend">
+              <span class="preset-card__title">Steady Uptrend</span>
+              <span class="preset-card__desc">Above both moving averages with RSI in a calm 45–65 range — trending without looking overheated.</span>
+            </button>
+            <button class="preset-card" data-preset="pullback_in_uptrend">
+              <span class="preset-card__title">Pullback in an Uptrend</span>
+              <span class="preset-card__desc">Still above its 200-day average (long-term uptrend intact) but RSI has cooled to 45 or below — a possible dip to watch.</span>
+            </button>
+          </div>
+
+          <details class="advanced-filters">
+            <summary>Build a custom filter instead</summary>
+            <form id="scannerForm" class="scanner-form">
+              <div class="scanner-form__row">
+                <label>Min RSI <input type="number" id="scanMinRsi" placeholder="e.g. 45" /></label>
+                <label>Max RSI <input type="number" id="scanMaxRsi" placeholder="e.g. 70" /></label>
+                <label>Min rel. volume <input type="number" step="0.1" id="scanMinRelVol" placeholder="e.g. 1.5" /></label>
+                <label>Min price ($) <input type="number" id="scanMinPrice" placeholder="e.g. 10" /></label>
+              </div>
+              <div class="scanner-form__row">
+                <label>Min 1-month return % <input type="number" id="scanMinReturn1m" placeholder="e.g. 5" /></label>
+                <label>Min 3-month return % <input type="number" id="scanMinReturn3m" placeholder="e.g. 0" /></label>
+                <label class="checkbox-label"><input type="checkbox" id="scanAboveSma50" /> Above 50-day average</label>
+                <label class="checkbox-label"><input type="checkbox" id="scanAboveSma200" /> Above 200-day average</label>
+              </div>
+              <p class="field-hint">RSI (0–100) measures how "overbought" or "oversold" a stock is — below 30 is typically oversold, above 70 overbought. Relative volume compares today's trading volume to its recent average; 2x means twice the usual activity.</p>
+              <button type="submit" class="btn btn--primary">Run custom scan</button>
+            </form>
+          </details>
+        </div>
+
+        <div id="scannerResults"><p class="empty-state">Pick a quick scan above, or build a custom filter.</p></div>
+      </section>
+
+      <!-- ================= BACKTESTING ================= -->
+      <section class="view" id="view-backtesting">
+        <header class="view-header">
+          <h1>Backtesting</h1>
+          <p class="view-subtitle">Simulated trading on the model's out-of-sample predictions, compared against simply buying and holding.</p>
+        </header>
+
+        <div class="panel">
+          <form id="backtestForm" class="inline-form">
+            <input type="text" id="backtestTickerInput" placeholder="Ticker, e.g. NVDA" autocomplete="off" />
+            <div class="period-toggle" id="backtestHorizonToggle">
+              <button type="button" data-horizon="1">1D</button>
+              <button type="button" data-horizon="5" class="active">5D</button>
+              <button type="button" data-horizon="20">20D</button>
+            </div>
+            <button type="submit" class="btn btn--primary">Run backtest</button>
+          </form>
+          <p class="field-hint">Retrains models across ~15 historical time windows to simulate real out-of-sample trading — takes anywhere from under a minute to a couple minutes. Every weighting and sizing decision only ever uses information that was actually available at that point in time, the same rule the whole app is built on.</p>
+        </div>
+
+        <div id="backtestResults"><p class="empty-state">Enter a ticker above and run a backtest.</p></div>
+      </section>
+
+      <!-- ================= TCN RESEARCH ================= -->
+      <section class="view" id="view-tcnresearch">
+        <header class="view-header">
+          <h1>TCN Research</h1>
+          <p class="view-subtitle">Experimental: a causal Temporal Convolutional Network plus a configurable risk-management pipeline — a research and paper-trading feature, not a promise of profitable live trading.</p>
+        </header>
+
+        <div id="tcnNotAvailable" class="panel" style="display:none;">
+          <p class="empty-state">PyTorch isn't installed, so this module is unavailable — everything else in the app works normally without it. Install torch to enable it.</p>
+        </div>
+
+        <div id="tcnInterface">
+          <div class="panel">
+            <form id="tcnForm" class="inline-form">
+              <input type="text" id="tcnTickerInput" placeholder="Ticker, e.g. NVDA" autocomplete="off" />
+              <div class="period-toggle" id="tcnHorizonToggle">
+                <button type="button" data-horizon="1">1D</button>
+                <button type="button" data-horizon="5" class="active">5D</button>
+                <button type="button" data-horizon="20">20D</button>
+              </div>
+              <button type="submit" class="btn btn--primary">Run 5-way comparison</button>
+              <button type="button" class="btn btn--ghost" id="tcnTriggerSearchBtn">Search for a better config</button>
+            </form>
+            <p class="field-hint">Trains a fresh TCN across ~15 walk-forward windows per config, same discipline as the main Backtesting page — can take a few minutes. "Search for a better config" trains 2 new candidate architectures and keeps whichever genuinely validates best out-of-sample.</p>
+          </div>
+
+          <div class="panel" id="tcnBestConfigPanel">
+            <div class="panel__header"><h2>Current best configuration</h2></div>
+            <div id="tcnBestConfigResults"><p class="empty-state">Enter a ticker above to see its search history.</p></div>
+          </div>
+
+          <div id="tcnComparisonResults"></div>
+
+          <div class="panel">
+            <div class="panel__header"><h2>Search trial history</h2></div>
+            <p class="field-hint" style="margin-top:-4px; margin-bottom:10px;">Every configuration ever tried, in full — nothing silently discarded.</p>
+            <div id="tcnTrialHistoryResults"><p class="empty-state">No trials yet.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= VOLATILITY SURFACE ================= -->
+      <section class="view" id="view-volatility">
+        <header class="view-header">
+          <h1>Volatility Surface</h1>
+          <p class="view-subtitle">Real Black-Scholes implied volatility, solved from live options chains — not a trained model, a mathematical inversion of actual market prices.</p>
+        </header>
+
+        <div class="panel">
+          <form id="volatilityForm" class="inline-form">
+            <input type="text" id="volatilityTickerInput" placeholder="Ticker, e.g. NVDA (must have listed options)" autocomplete="off" />
+            <div class="period-toggle" id="volatilityRiskToggle">
+              <button type="button" data-risk="conservative">Conservative</button>
+              <button type="button" data-risk="moderate" class="active">Moderate</button>
+              <button type="button" data-risk="aggressive">Aggressive</button>
+            </div>
+            <button type="submit" class="btn btn--primary">Build surface</button>
+          </form>
+          <p class="field-hint">Fetches live options chains, filters out illiquid/arbitrage-violating quotes, solves for implied volatility per contract, and interpolates a smooth surface. Not every ticker has listed options.</p>
+        </div>
+
+        <div id="volatilityResults"><p class="empty-state">Enter a ticker above to build its volatility surface.</p></div>
+      </section>
+
+      <!-- ================= PORTFOLIO ================= -->
+      <section class="view" id="view-portfolio">
+        <header class="view-header">
+          <h1>Portfolio</h1>
+          <p class="view-subtitle">Manually tracked holdings — this app never places or simulates trades, it only tracks what you tell it.</p>
+        </header>
+
+        <div class="panel">
+          <form id="portfolioAddForm" class="inline-form">
+            <input type="text" id="portfolioTickerInput" placeholder="Ticker, e.g. NVDA" autocomplete="off" style="min-width:100px;" />
+            <input type="number" id="portfolioSharesInput" placeholder="Shares" step="any" autocomplete="off" style="width:100px;" />
+            <input type="number" id="portfolioEntryPriceInput" placeholder="Entry price ($)" step="any" autocomplete="off" style="width:140px;" />
+            <button type="submit" class="btn btn--primary">Add holding</button>
+          </form>
+          <p class="field-hint" id="portfolioEntryPriceHint"></p>
+        </div>
+
+        <div class="panel">
+          <div class="panel__header"><h2>Holdings</h2></div>
+          <div id="portfolioResults"><p class="empty-state">Loading…</p></div>
+        </div>
+      </section>
+
+      <!-- ================= ALERTS ================= -->
+      <section class="view" id="view-alerts">
+        <header class="view-header">
+          <h1>Alerts</h1>
+          <p class="view-subtitle">Fires only on material changes — a signal flip or a portfolio position's risk escalating — never on every routine check.</p>
+        </header>
+
+        <div class="panel">
+          <div class="panel__header">
+            <h2>Recent alerts</h2>
+            <div style="display:flex; gap:8px;">
+              <button class="btn" id="checkAlertsNowBtn">Check now</button>
+              <button class="btn" id="markAllReadBtn">Mark all read</button>
+            </div>
+          </div>
+          <div id="alertsResults"><p class="empty-state">Loading…</p></div>
+        </div>
+      </section>
+
+      <!-- ================= PREDICTIONS ================= -->
+      <section class="view" id="view-predictions">
+        <header class="view-header">
+          <h1>Predictions</h1>
+          <p class="view-subtitle">Ensemble ML forecasts with walk-forward validated confidence — never a guarantee, always shown with uncertainty.</p>
+        </header>
+
+        <div class="panel">
+          <form id="predictForm" class="inline-form">
+            <input type="text" id="predictTickerInput" placeholder="Ticker, e.g. NVDA" autocomplete="off" />
+            <div class="period-toggle" id="horizonToggle">
+              <button type="button" data-horizon="1">1D</button>
+              <button type="button" data-horizon="5" class="active">5D</button>
+              <button type="button" data-horizon="20">20D</button>
+            </div>
+            <div class="period-toggle" id="riskProfileToggle">
+              <button type="button" data-risk="conservative">Conservative</button>
+              <button type="button" data-risk="moderate" class="active">Moderate</button>
+              <button type="button" data-risk="aggressive">Aggressive</button>
+            </div>
+            <button type="submit" class="btn btn--primary">Predict</button>
+            <button type="button" id="retrainBtn" class="btn">Retrain from scratch</button>
+          </form>
+          <p class="field-hint">First prediction for a ticker trains models from scratch (walk-forward validated across ~5 years of history) and can take anywhere from under a minute to several minutes depending on your machine — the LSTM model (if PyTorch is installed) is the slowest part. After that, results are cached for 24 hours. The risk profile only changes the suggested position size — never the prediction itself.</p>
+        </div>
+
+        <div id="predictionResults"><p class="empty-state">Enter a ticker above and click Predict.</p></div>
+      </section>
+
+      <!-- ================= MODELS ================= -->
+      <section class="view" id="view-models">
+        <header class="view-header">
+          <h1>Models</h1>
+          <p class="view-subtitle">Model availability, trained versions, and out-of-sample prediction accuracy.</p>
+        </header>
+
+        <div class="panel">
+          <div class="panel__header"><h2>Model availability</h2></div>
+          <div id="modelAvailability"><p class="empty-state">Loading…</p></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel__header"><h2>Automatic accuracy tracking</h2></div>
+          <div id="schedulerStatus"><p class="empty-state">Loading…</p></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel__header">
+            <h2>Prediction accuracy tracking</h2>
+            <button class="btn" id="evaluatePredictionsBtn">Evaluate matured predictions</button>
+          </div>
+          <p class="field-hint" style="margin-top:-4px;">Predictions are scored against real outcomes once their horizon has passed. Click the button above to check for any that are now ready to evaluate.</p>
+          <div id="accuracyTracking"><p class="empty-state">Loading…</p></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel__header"><h2>Trained model versions</h2></div>
+          <form id="modelVersionsForm" class="inline-form">
+            <input type="text" id="modelVersionsTickerInput" placeholder="Ticker, e.g. NVDA" autocomplete="off" />
+            <button type="submit" class="btn btn--primary">View</button>
+          </form>
+          <div id="modelVersionsResults" style="margin-top:14px;"></div>
+        </div>
+      </section>
+
+      <!-- ================= AI ASSISTANT ================= -->
+      <section class="view" id="view-chat">
+        <header class="view-header">
+          <h1>AI Assistant</h1>
+          <p class="view-subtitle">Ask about how the app works, or how to interpret a result — never financial advice.</p>
+        </header>
+
+        <div id="chatNotConfigured" class="panel" style="display:none;">
+          <p class="empty-state">No Anthropic API key configured — add <code>ANTHROPIC_API_KEY</code> to your <code>.env</code> file to enable this. Everything else in the app works fine without it.</p>
+        </div>
+
+        <div id="chatInterface" class="panel">
+          <div id="chatMessages" style="min-height:320px; max-height:480px; overflow-y:auto; margin-bottom:14px;">
+            <p class="empty-state">Ask a question below — e.g. "What does a Sharpe ratio mean?" or "Why did NVDA come back neutral?"</p>
+          </div>
+          <form id="chatForm" class="inline-form">
+            <input type="text" id="chatInput" placeholder="Ask a question…" autocomplete="off" style="flex:1; min-width:0;" />
+            <button type="submit" class="btn btn--primary">Send</button>
+          </form>
+          <p class="field-hint" style="margin-top:8px;">If you've just run a prediction or backtest, it's automatically attached as context so you can ask specifics about it.</p>
+        </div>
+      </section>
+
+      <!-- ================= SETTINGS ================= -->
+      <section class="view" id="view-settings">
+        <header class="view-header">
+          <h1>Settings</h1>
+          <p class="view-subtitle">Preferences, data management, and diagnostics.</p>
+        </header>
+
+        <div class="panel">
+          <div class="panel__header"><h2>Default risk profile</h2></div>
+          <p class="field-hint">Used as the starting selection whenever you open Predictions — you can still change it per-prediction.</p>
+          <div class="period-toggle" id="settingsRiskProfileToggle" style="margin-top:10px;">
+            <button type="button" data-risk="conservative">Conservative</button>
+            <button type="button" data-risk="moderate" class="active">Moderate</button>
+            <button type="button" data-risk="aggressive">Aggressive</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel__header"><h2>Data & cache</h2></div>
+          <div id="cacheStatsResults"><p class="empty-state">Loading…</p></div>
+          <button class="btn" id="clearCacheBtn" style="margin-top:12px;">Clear cached price data</button>
+          <p class="field-hint" style="margin-top:8px;">Forces the next request for any ticker to fetch fresh data instead of reusing what's cached. Doesn't affect your watchlist, portfolio, or trained models.</p>
+        </div>
+
+        <div class="panel">
+          <div class="panel__header"><h2>Model availability</h2></div>
+          <div id="settingsModelAvailability"><p class="empty-state">Loading…</p></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel__header"><h2>Background scheduler</h2></div>
+          <div id="settingsSchedulerStatus"><p class="empty-state">Loading…</p></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel__header"><h2>Browser notifications</h2></div>
+          <div class="switch-row">
+            <div>
+              <div class="switch-row__label">Enable browser notifications</div>
+              <div class="switch-row__desc">Get a native notification when a new alert fires, even if this tab isn't focused.</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="notificationsToggle" />
+              <span class="switch__track"></span>
+            </label>
+          </div>
+          <p class="field-hint" id="notificationStatusText" style="margin-top:8px;"></p>
+        </div>
+      </section>
+
+      <!-- ================= PLACEHOLDER VIEWS ================= -->
+      <section class="view" id="view-placeholder-template">
+        <div class="panel panel--muted phase-placeholder">
+          <h2 id="placeholderTitle">Coming soon</h2>
+          <p id="placeholderText">This section arrives in a later build phase.</p>
+        </div>
+      </section>
+
+      </div>
+    </main>
+  </div>
+</div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>
